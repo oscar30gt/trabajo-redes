@@ -275,8 +275,54 @@ int initsocket(struct addrinfo *servinfo, char f_verbose)
 /**************************************************************************/
 void alg_basico(int socket, struct addrinfo *servinfo)
 {
-
 	printf("Comunicación con algoritmo básico\n");
+
+	struct rcftp_msg mensaje, respuesta;
+	int ultimoMensaje = 0;		//ultimoMensaje ← false
+	int ultimoMensajeConfirmado = 0;	//ultimoMensajeConfirmado ← false
+	ssize_t datos, sentbytes, recvbytes;
+	datos = read(0, mensaje.buffer, RCFTP_BUFLEN)		//datos ← leerDeEntradaEstandar(RCFTP_BUFLEN)
+
+	if(datos < 0)
+	{
+		perror("Error leyendo de entrada estándar");
+		exit(1);
+	}
+	else if(datos == 0)		//if finDeFicheroAlcanzado then
+	{
+		ultimoMensaje = 1;	//ultimoMensaje ← true
+	}						//end if
+
+	mensaje.version = RCFTP_VERSION_1;		//mensaje ← construirMensajeRCFTP(datos)
+	mensaje.flags = F_NOFLAGS;
+	mensaje.numseq = htonl(0);
+	mensaje.next = htonl(0);
+	mensaje.len = htons(datos);
+	mensaje.sum = 0;
+	mensaje.sum = xsum((char*)&mensaje, sizeof(mensaje));
+
+	while(ultimoMensajeConfirmado == 0)	//while not ultimoMensajeConfirmado do
+	{
+		if(sentbytes = sendto(socket, (char*)&mensaje, sizeof(mensaje), 0, servinfo->ai_addr, servinfo->ai_addrlen) < 0)		//enviar(mensaje)
+		{
+			perror("Error de escritura en el socket (sendto)");
+			exit(1);
+		}
+		else if(verb)
+		{
+			printf("Enviados %zd bytes al servidor\n", sentbytes);
+		}
+		
+		if(recvbytes = recvfrom(socket, (char*)&respuesta, sizeof(respuesta), 0, servinfo->ai_addr, &servinfo->ai_addrlen) < 0)		//recibir(respuesta)
+		{
+			perror("Error al recibir datos (recvfrom)");
+			exit(1);
+		}
+		else if(verb)
+		{
+			printf("Recibidos %zd bytes del servidor\n", recvbytes);
+		}
+	}
 
 #warning FALTA IMPLEMENTAR EL ALGORITMO BASICO
 	printf("Algoritmo no implementado\n");
