@@ -54,6 +54,47 @@ extern volatile const int timeouts_vencidos;
 /************************* FUNCIONES DEL CLIENTE **************************/
 /**************************************************************************/
 
+int esMensajeValido(struct rcftp_msg *msg, ssize_t len)
+{
+    // Comprobamos la versión
+    if (msg->version != RCFTP_VERSION_1) {
+        if (verb)
+			printf("Versión incorrecta: %d\n", msg->version);
+        return 0;
+    }
+
+    // Comprobamos el checksum usando la función existente
+    if (!issumvalid(msg, len)) {
+        if (verb) 
+			printf("Checksum inválido\n");
+        return 0;
+    }
+
+    // Si pasa ambas comprobaciones, el mensaje es válido
+    return 1;
+}
+
+int esLaRespuestaEsperada(struct rcftp_msg *sent, struct rcftp_msg *received)
+{
+    uint32_t sent_numseq = ntohl(sent->numseq);
+    uint16_t sent_len = ntohs(sent->len);
+    uint32_t expected_next = sent_numseq + sent_len;
+
+	// Cmprueba que el next de la respuesta es el esperado
+	if(ntohl(received->next) != expected_next)
+		return 0;
+	
+	// Comprueba que no tenga flags de ocupado ni de abortar
+	if((received->flags & (F_BUSY | F_ABORT)) != 0)
+		return 0;
+
+	// Si el mensaje tenia marcado F_FIN, la respuesta también debe tenerlo
+	if((sent->flags & F_FIN) && !(received->flags & F_FIN))
+		return 0;
+
+	// La respuesta es la esperada
+	return 1;
+}
 
 /**************************************************************************/
 /* Obtiene la estructura de direcciones del servidor */
@@ -281,17 +322,12 @@ void alg_basico(int socket, struct addrinfo *servinfo)
 	int ultimoMensaje = 0;		//ultimoMensaje ← false
 	int ultimoMensajeConfirmado = 0;	//ultimoMensajeConfirmado ← false
 	ssize_t datos, sentbytes, recvbytes;
-	datos = read(0, mensaje.buffer, RCFTP_BUFLEN)		//datos ← leerDeEntradaEstandar(RCFTP_BUFLEN)
+	datos = readtobuffer(mensaje.buffer, RCFTP_BUFLEN);		//datos ← leerDeEntradaEstandar(RCFTP_BUFLEN)
 
-	if(datos < 0)
-	{
-		perror("Error leyendo de entrada estándar");
-		exit(1);
-	}
-	else if(datos == 0)		//if finDeFicheroAlcanzado then
+	if(datos == 0)		//if finDeFicheroAlcanzado then
 	{
 		ultimoMensaje = 1;	//ultimoMensaje ← true
-	}						//end if
+	}		//end if
 
 	mensaje.version = RCFTP_VERSION_1;		//mensaje ← construirMensajeRCFTP(datos)
 	mensaje.flags = F_NOFLAGS;
@@ -301,9 +337,10 @@ void alg_basico(int socket, struct addrinfo *servinfo)
 	mensaje.sum = 0;
 	mensaje.sum = xsum((char*)&mensaje, sizeof(mensaje));
 
-	while(ultimoMensajeConfirmado == 0)	//while not ultimoMensajeConfirmado do
+	while(ultimoMensajeConfirmado == 0)		//while ultimoMensajeConfirmado = false do
 	{
-		if(sentbytes = sendto(socket, (char*)&mensaje, sizeof(mensaje), 0, servinfo->ai_addr, servinfo->ai_addrlen) < 0)		//enviar(mensaje)
+		//enviar(mensaje)
+		if((sentbytes = sendto(socket, (char*)&mensaje, sizeof(mensaje), 0, servinfo->ai_addr, servinfo->ai_addrlen)) < 0)
 		{
 			perror("Error de escritura en el socket (sendto)");
 			exit(1);
@@ -313,7 +350,9 @@ void alg_basico(int socket, struct addrinfo *servinfo)
 			printf("Enviados %zd bytes al servidor\n", sentbytes);
 		}
 		
-		if(recvbytes = recvfrom(socket, (char*)&respuesta, sizeof(respuesta), 0, servinfo->ai_addr, &servinfo->ai_addrlen) < 0)		//recibir(respuesta)
+		//recibir(respuesta)
+		socklen_t addrlen = servinfo->ai_addrlen;
+		if((recvbytes = recvfrom(socket, (char*)&respuesta, sizeof(respuesta), 0, servinfo->ai_addr, &addrlen)) < 0)
 		{
 			perror("Error al recibir datos (recvfrom)");
 			exit(1);
@@ -322,10 +361,42 @@ void alg_basico(int socket, struct addrinfo *servinfo)
 		{
 			printf("Recibidos %zd bytes del servidor\n", recvbytes);
 		}
-	}
 
-#warning FALTA IMPLEMENTAR EL ALGORITMO BASICO
-	printf("Algoritmo no implementado\n");
+		if(esMensajeValido(&respuesta, recvbytes) && esLaRespuestaEsperada(&mensaje, &respuesta))	//if esMensajeValido(respuesta) and esLaRespuestaEsperada(respuesta) then
+		{
+			if(verb)
+			{
+				printf("Respuesta válida y esperada recibida del servidor\n");
+			}
+
+			if(ultimoMensaje == 1)		//if ultimoMensaje then
+			{
+				ultimoMensajeConfirmado = 1;		//ultimoMensajeConfirmado ← true
+			}
+			else		//else
+			{
+				datos = readtobuffer(mensaje.buffer, RCFTP_BUFLEN);		//datos ← leerDeEntradaEstandar(RCFTP_BUFLEN)
+
+				if(datos == 0)		//if finDeFicheroAlcanzado then
+				{
+					ultimoMensaje = 1;		//ultimoMensaje ← true
+				}		//end if
+
+				mensaje.numseq = htonl(ntohl(mensaje.numseq) + ntohs(mensaje.len));		//mensaje ← construirMensajeRCFTP(datos)
+				mensaje.next = htonl(ntohl(mensaje.numseq));
+				mensaje.len = htons(datos);
+				mensaje.sum = 0;
+				mensaje.sum = xsum((char*)&mensaje, sizeof(mensaje));
+			}		// end if
+		}																			
+		else
+		{
+			if(verb)
+			{
+				printf("Respuesta inválida o inesperada recibida del servidor. Reenviando el último mensaje.\n");
+			}
+		}		// end if
+	}		// end while
 }
 
 /**************************************************************************/
