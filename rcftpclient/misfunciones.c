@@ -322,7 +322,7 @@ void alg_basico(int socket, struct addrinfo *servinfo)
 	int ultimoMensaje = 0;		//ultimoMensaje ← false
 	int ultimoMensajeConfirmado = 0;	//ultimoMensajeConfirmado ← false
 	ssize_t datos, sentbytes, recvbytes;
-	datos = readtobuffer(mensaje.buffer, RCFTP_BUFLEN);		//datos ← leerDeEntradaEstandar(RCFTP_BUFLEN)
+	datos = readtobuffer((char *)mensaje.buffer, RCFTP_BUFLEN);		//datos ← leerDeEntradaEstandar(RCFTP_BUFLEN)
 
 	if(datos == 0)		//if finDeFicheroAlcanzado then
 	{
@@ -375,7 +375,7 @@ void alg_basico(int socket, struct addrinfo *servinfo)
 			}
 			else		//else
 			{
-				datos = readtobuffer(mensaje.buffer, RCFTP_BUFLEN);		//datos ← leerDeEntradaEstandar(RCFTP_BUFLEN)
+				datos = readtobuffer((char *)mensaje.buffer, RCFTP_BUFLEN);		//datos ← leerDeEntradaEstandar(RCFTP_BUFLEN)
 
 				if(datos == 0)		//if finDeFicheroAlcanzado then
 				{
@@ -383,7 +383,7 @@ void alg_basico(int socket, struct addrinfo *servinfo)
 				}		//end if
 
 				mensaje.numseq = htonl(ntohl(mensaje.numseq) + ntohs(mensaje.len));		//mensaje ← construirMensajeRCFTP(datos)
-				mensaje.next = htonl(ntohl(mensaje.numseq));
+				mensaje.next = htonl(0);
 				mensaje.len = htons(datos);
 				mensaje.sum = 0;
 				mensaje.sum = xsum((char*)&mensaje, sizeof(mensaje));
