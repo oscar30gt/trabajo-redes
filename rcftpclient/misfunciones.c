@@ -327,10 +327,14 @@ void alg_basico(int socket, struct addrinfo *servinfo)
 	if(datos == 0)		//if finDeFicheroAlcanzado then
 	{
 		ultimoMensaje = 1;	//ultimoMensaje ← true
+		mensaje.flags = F_FIN;
+	}
+	else
+	{
+		mensaje.flags = F_NOFLAGS;
 	}		//end if
 
 	mensaje.version = RCFTP_VERSION_1;		//mensaje ← construirMensajeRCFTP(datos)
-	mensaje.flags = F_NOFLAGS;
 	mensaje.numseq = htonl(0);
 	mensaje.next = htonl(0);
 	mensaje.len = htons(datos);
@@ -380,6 +384,7 @@ void alg_basico(int socket, struct addrinfo *servinfo)
 				if(datos == 0)		//if finDeFicheroAlcanzado then
 				{
 					ultimoMensaje = 1;		//ultimoMensaje ← true
+					mensaje.flags = F_FIN;
 				}		//end if
 
 				mensaje.numseq = htonl(ntohl(mensaje.numseq) + ntohs(mensaje.len));		//mensaje ← construirMensajeRCFTP(datos)
